@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment variables (commit only .env.example)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Test and coverage
+coverage/
+
+# Uploads and local data
+uploads/
+tmp/
+*.dump
+
+# Editor and OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Deployment
+.vercel/
