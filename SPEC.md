@@ -99,6 +99,7 @@ server/
       chat.controller.js  conversations.controller.js  public.controller.js
     services/                  Business logic + DB access. No req/res objects
       auth.service.js          Signup (tenant + admin), login, token signing
+      user.service.js          Staff user creation, password hashing, toPublicUser()
       document.service.js      CRUD for Document; delete cascades to chunks
       ingestion.service.js     load → split → embed → store for one document
       vectorStore.service.js   insertChunks(), searchChunks({tenantId, embedding, k}) via $vectorSearch
@@ -119,7 +120,7 @@ server/
       resolveTenant.js         :slug → req.tenant (404 if missing)
       errorHandler.js          errorHandler + notFound; converts errors to the standard error JSON
     validators/                zod schemas per route group
-      auth.schemas.js  documents.schemas.js  chat.schemas.js  conversations.schemas.js
+      auth.schemas.js  users.schemas.js  documents.schemas.js  chat.schemas.js  conversations.schemas.js
     utils/
       AppError.js              class AppError(status, code, message, details?)
       sse.js                   initSSE(res), sendEvent(res, event, data), endSSE(res)
@@ -363,7 +364,7 @@ Human message template:
 
 | Name | Purpose | Example |
 |---|---|---|
-| PORT | API port (optional, defaults to `5000`) | `5000` |
+| PORT | API port (optional, defaults to `5004`) | `5004` |
 | NODE_ENV | `development` \| `production` \| `test` | `development` |
 | MONGODB_URI | Atlas connection string | `mongodb+srv://user:pass@cluster0.x.mongodb.net/supportbot` |
 | JWT_SECRET | HS256 signing secret, ≥ 32 chars | `change-me-to-64-random-chars` |
@@ -381,7 +382,7 @@ Human message template:
 | MAX_MESSAGE_CHARS | Chat input limit | `1000` |
 | MAX_UPLOAD_MB | Upload size limit | `10` |
 | MAX_DOCS_PER_TENANT | Document cap (assumed) | `50` |
-| VITE_API_BASE_URL | (client) API base URL | `http://localhost:5000/api` |
+| VITE_API_BASE_URL | (client) API base URL | `http://localhost:5004/api` |
 
 `.env` is git-ignored. Commit `.env.example` with placeholder values. `config/env.js` prints each invalid variable and exits with code 1 if any variable is missing or invalid. `PORT` is the only variable with a default.
 

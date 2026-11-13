@@ -3,15 +3,27 @@ import { z } from 'zod';
 
 dotenv.config({ quiet: true });
 
+const DEFAULT_PORT = 5004;
+const JWT_EXPIRES_IN_SECONDS_PATTERN = /^[1-9]\d*$/;
+const JWT_EXPIRES_IN_TIMESPAN_PATTERN = /^[1-9]\d*[smhdwy]$/;
+
 const positiveInt = z.coerce.number().int().positive();
 const requiredString = z.string().trim().min(1, 'is required');
 
 const envSchema = z.object({
-  PORT: positiveInt.default(5000),
+  PORT: positiveInt.default(DEFAULT_PORT),
   NODE_ENV: z.enum(['development', 'production', 'test']),
   MONGODB_URI: requiredString,
   JWT_SECRET: z.string().min(32, 'must be at least 32 characters'),
-  JWT_EXPIRES_IN: requiredString,
+  JWT_EXPIRES_IN: z
+    .string()
+    .trim()
+    .refine(
+      (value) =>
+        JWT_EXPIRES_IN_SECONDS_PATTERN.test(value) || JWT_EXPIRES_IN_TIMESPAN_PATTERN.test(value),
+      'must be a positive number of seconds (e.g. 3600) or a timespan like 15m, 12h, 1d, 7d',
+    )
+    .transform((value) => (JWT_EXPIRES_IN_SECONDS_PATTERN.test(value) ? Number(value) : value)),
   CLIENT_ORIGIN: requiredString.transform((value) =>
     value.split(',').map((origin) => origin.trim()).filter(Boolean),
   ),
