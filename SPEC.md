@@ -291,13 +291,14 @@ Client uses `fetch` + `ReadableStream` (not `EventSource`, which can't POST). Se
 
 ### Embedding dimensions
 - `gemini-embedding-001` returns **3072 dimensions by default**. The output dimensionality must be set explicitly to `EMBEDDING_DIMENSIONS` (768) in `ai/provider.js`.
-- Before the first ingestion, verify that the LangChain.js Gemini embeddings class actually passes the output-dimensionality option through. Embed one string and assert `vector.length === EMBEDDING_DIMENSIONS`. If the option isn't supported, decide before ingesting anything: change `numDimensions` and `EMBEDDING_DIMENSIONS` to 3072, or call the Google SDK directly inside `provider.js`.
+- Embeddings call `@google/genai` directly from `provider.js` with `outputDimensionality: EMBEDDING_DIMENSIONS`. LangChain's Gemini embeddings class is not used, because it returns empty vectors instead of throwing when a batch fails, which hides 429s from retries.
+- Vectors below 3072 dimensions are L2-normalized before they are stored or searched, because Gemini returns them with a norm of about 0.59. Normalizing keeps cosine scores consistent.
 
 ### Retrieval
 - `$vectorSearch` aggregation in `vectorStore.service.js` (raw aggregation, not LangChain's vector store class, so the tenant filter is a required argument) (assumed).
 - `index: "chunk_vector_index"`, `limit: RAG_TOP_K = 5`, `numCandidates: RAG_NUM_CANDIDATES = 100`, `filter: { tenantId: <ObjectId> }`.
 - Project `score: { $meta: "vectorSearchScore" }`. Keep chunks with `score >= RAG_SIMILARITY_THRESHOLD`.
-- **Threshold:** 0.75 is only a starting point. For cosine similarity, Atlas normalizes scores to 0–1 as `(1 + cosine) / 2`, so 0.75 corresponds to a raw cosine of 0.5. Tune it on about 20 real questions per test tenant.
+- **Threshold:** 0.85 is only a starting point. For cosine similarity, Atlas normalizes scores to 0–1 as `(1 + cosine) / 2`, so 0.85 corresponds to a raw cosine of 0.7. Tune it on about 20 real questions per test tenant, using query-to-document scores (a `RETRIEVAL_QUERY` embedding against stored chunks). Never tune it on document-to-document scores: Gemini scores even unrelated documents around 0.90 on Atlas's scale.
 - If 0 chunks pass: skip the answer LLM call, stream `FALLBACK_TEXT`, set `answered=false`.
 - If the model's answer starts with "I don't know", also set `answered=false`.
 - If the answer model returns empty or whitespace-only text, save and stream `FALLBACK_TEXT` instead and set `answered=false`.
@@ -380,7 +381,7 @@ Human message template:
 | VECTOR_INDEX_NAME | Atlas vector index name | `chunk_vector_index` |
 | RAG_TOP_K | Chunks retrieved | `5` |
 | RAG_NUM_CANDIDATES | ANN candidates | `100` |
-| RAG_SIMILARITY_THRESHOLD | Minimum score kept | `0.75` |
+| RAG_SIMILARITY_THRESHOLD | Minimum score kept | `0.85` |
 | RAG_HISTORY_MESSAGES | Memory window (6–10) | `8` |
 | MAX_MESSAGE_CHARS | Chat input limit | `1000` |
 | MAX_UPLOAD_MB | Upload size limit | `10` |
@@ -416,7 +417,7 @@ Human message template:
   - unknown → 500 `INTERNAL_ERROR` with a generic message (log the full error, never send the stack)
 - **Success responses:** single resource `{ <name>: {...} }`, lists `{ items, page, limit, total }`. Pagination `?page=1&limit=20`, max limit 100.
 - **Errors during SSE:** after headers are sent, send an `error` event and end the stream. Never call `res.status()` after streaming starts. `errorHandler` passes the error to Express's default handler when `res.headersSent` is true.
-- **Provider wrapping:** `ai/provider.js` is the only file that imports `@langchain/google-genai`. It exports `getChatModel({ temperature, streaming })` and `getEmbeddings({ taskType })`, built from `LLM_MODEL`/`EMBEDDING_MODEL`/`EMBEDDING_DIMENSIONS`. To switch providers, edit only this file and the env vars. Changing the embedding model or its dimensions requires re-ingesting all documents.
+- **Provider wrapping:** `ai/provider.js` is the only file that imports `@langchain/google-genai` or `@google/genai`. It exports `getChatModel({ temperature, streaming })` and `getEmbeddings({ taskType })`, built from `LLM_MODEL`/`EMBEDDING_MODEL`/`EMBEDDING_DIMENSIONS`. To switch providers, edit only this file and the env vars. Changing the embedding model or its dimensions requires re-ingesting all documents.
 - **Logging:** `morgan("dev")` in development. `console.error` of the full error for 500s in the error handler. Never log passwords, tokens, API keys, or full document text.
 - **Frontend:** all HTTP goes through `api/http.js`. Keep tokens in `AuthContext`. Tailwind utility classes, no component library (assumed).
 

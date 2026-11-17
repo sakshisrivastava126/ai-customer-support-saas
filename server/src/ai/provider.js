@@ -3,7 +3,12 @@ import { GoogleGenAI } from '@google/genai';
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { config } from '../config/env.js';
 
-const MAX_RETRIES = 3;
+const CHAT_MAX_RETRIES = 3;
+const EMBEDDING_MAX_RETRIES = 5;
+const SERVER_RETRY_DELAY_CAP_MS = 60_000;
+const MS_PER_SECOND = 1000;
+const NANOS_PER_SECOND = 1e9;
+const RETRY_INFO_TYPE_SUFFIX = 'google.rpc.RetryInfo';
 const RETRY_BASE_DELAY_MS = 1000;
 const RETRY_MAX_JITTER_MS = 250;
 const RATE_LIMIT_STATUS = 429;
@@ -39,13 +44,68 @@ function backoffDelayMs(attempt) {
   return RETRY_BASE_DELAY_MS * 2 ** attempt + Math.random() * RETRY_MAX_JITTER_MS;
 }
 
-async function withRetries(operation) {
+function readHeader(headers, name) {
+  if (!headers) return undefined;
+  if (typeof headers.get === 'function') return headers.get(name) ?? undefined;
+  const key = Object.keys(headers).find((header) => header.toLowerCase() === name);
+  return key === undefined ? undefined : headers[key];
+}
+
+function retryAfterHeaderMs(err) {
+  const value = readHeader(err?.headers ?? err?.response?.headers, 'retry-after');
+  if (value === undefined || value === null || String(value).trim() === '') return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return seconds * MS_PER_SECOND;
+  const retryAt = Date.parse(value);
+  return Number.isNaN(retryAt) ? undefined : retryAt - Date.now();
+}
+
+function durationToMs(duration) {
+  if (typeof duration === 'string') {
+    const seconds = Number.parseFloat(duration);
+    return duration.trim().endsWith('s') && Number.isFinite(seconds)
+      ? seconds * MS_PER_SECOND
+      : undefined;
+  }
+  if (duration && typeof duration === 'object') {
+    const seconds = Number(duration.seconds ?? 0) + Number(duration.nanos ?? 0) / NANOS_PER_SECOND;
+    return Number.isFinite(seconds) ? seconds * MS_PER_SECOND : undefined;
+  }
+  return undefined;
+}
+
+function parseErrorBody(err) {
+  try {
+    return JSON.parse(err?.message);
+  } catch {
+    return undefined;
+  }
+}
+
+function retryInfoDelayMs(err) {
+  const details = parseErrorBody(err)?.error?.details;
+  if (!Array.isArray(details)) return undefined;
+  const retryInfo = details.find((detail) => detail?.['@type']?.endsWith(RETRY_INFO_TYPE_SUFFIX));
+  return durationToMs(retryInfo?.retryDelay);
+}
+
+function serverSuggestedDelayMs(err) {
+  const delayMs = retryAfterHeaderMs(err) ?? retryInfoDelayMs(err);
+  if (delayMs === undefined) return undefined;
+  return Math.min(Math.max(delayMs, 0), SERVER_RETRY_DELAY_CAP_MS);
+}
+
+function embeddingRetryDelayMs(err, attempt) {
+  return serverSuggestedDelayMs(err) ?? backoffDelayMs(attempt);
+}
+
+async function withRetries(operation, { maxRetries, delayMs }) {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await operation();
     } catch (err) {
-      if (attempt >= MAX_RETRIES || !isRetryableError(err)) throw err;
-      await sleep(backoffDelayMs(attempt));
+      if (attempt >= maxRetries || !isRetryableError(err)) throw err;
+      await sleep(delayMs(err, attempt));
     }
   }
 }
@@ -56,7 +116,7 @@ export function getChatModel({ temperature, streaming = false }) {
     model: config.llmModel,
     temperature,
     streaming,
-    maxRetries: MAX_RETRIES,
+    maxRetries: CHAT_MAX_RETRIES,
     onFailedAttempt: rethrowUnlessRetryable,
   });
 }
@@ -76,12 +136,14 @@ function toEmbeddingVector(values) {
 }
 
 async function embedBatch(texts, taskType) {
-  const response = await withRetries(() =>
-    genAI.models.embedContent({
-      model: config.embeddingModel,
-      contents: texts,
-      config: { taskType, outputDimensionality: config.embeddingDimensions },
-    }),
+  const response = await withRetries(
+    () =>
+      genAI.models.embedContent({
+        model: config.embeddingModel,
+        contents: texts,
+        config: { taskType, outputDimensionality: config.embeddingDimensions },
+      }),
+    { maxRetries: EMBEDDING_MAX_RETRIES, delayMs: embeddingRetryDelayMs },
   );
   const embeddings = response.embeddings ?? [];
   if (embeddings.length !== texts.length) {
