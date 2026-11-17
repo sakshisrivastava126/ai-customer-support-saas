@@ -125,6 +125,8 @@ server/
       AppError.js              class AppError(status, code, message, details?)
       sse.js                   initSSE(res), sendEvent(res, event, data), endSSE(res)
       pagination.js            parsePage(query) → {page, limit, skip}
+  scripts/
+    createVectorIndex.js       npm run index:create: creates the Atlas vector index, safe to rerun
 client/
   index.html  vite.config.js  tailwind.config.js  package.json
   src/

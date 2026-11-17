@@ -14,3 +14,8 @@
 - **Optional arrays are omitted, not stored empty:** Message.sources and Chunk.embedding use default: undefined, so a missing embedding fails validation instead of saving as [].
 - **One conversation index:** { tenantId, lastMessageAt, unansweredCount } serves both the full list and the "unanswered only" list, sorted by latest message.
 - **MongoDB DNS:** some Indian ISPs fail the SRV lookup used by mongodb+srv:// connection strings (querySrv ENOTFOUND). Fixed by setting the Mac's DNS to 8.8.8.8 and 1.1.1.1.
+- **Embeddings bypass LangChain:** @langchain/google-genai replaces a failed embedding batch with empty vectors instead of throwing, hiding 429s from retries. provider.js calls @google/genai directly for embeddings and uses LangChain only for chat.
+- **768-dimension vectors are L2-normalized:** Gemini returns vectors with a norm of about 0.59 below 3072 dimensions. Normalizing keeps cosine scores consistent.
+- **Similarity threshold starts at 0.85, not 0.75:** Gemini scores unrelated text around 0.90 on Atlas's scale, so 0.75 would let every chunk through. To be tuned on real query-to-chunk scores.
+- **Patient retries for embeddings only:** ingestion runs in the background and honors Gemini's suggested retry delay; chat keeps quick retries because a visitor is waiting.
+- **The vector index script never drops anything:** a mismatched definition stops the script, because dropping the index would break search until every document is re-embedded.
