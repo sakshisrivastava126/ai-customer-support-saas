@@ -206,7 +206,7 @@ Conversation
   messageCount    Number   default 0
   unansweredCount Number   default 0
   lastMessageAt   Date     default now
-  Indexes: { tenantId: 1, lastMessageAt: -1 }, { tenantId: 1, unansweredCount: 1 }
+  Indexes: { tenantId: 1, lastMessageAt: -1, unansweredCount: 1 }
 
 Message                                       (separate collection) (assumed)
   tenantId        ObjectId ref Tenant, required
@@ -298,6 +298,7 @@ Client uses `fetch` + `ReadableStream` (not `EventSource`, which can't POST). Se
 - **Threshold:** 0.75 is only a starting point. For cosine similarity, Atlas normalizes scores to 0–1 as `(1 + cosine) / 2`, so 0.75 corresponds to a raw cosine of 0.5. Tune it on about 20 real questions per test tenant.
 - If 0 chunks pass: skip the answer LLM call, stream `FALLBACK_TEXT`, set `answered=false`.
 - If the model's answer starts with "I don't know", also set `answered=false`.
+- If the answer model returns empty or whitespace-only text, save and stream `FALLBACK_TEXT` instead and set `answered=false`.
 
 ### Query rewriting
 - Skip when history is empty (first message). Use the raw message.

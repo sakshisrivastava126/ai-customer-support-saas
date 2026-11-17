@@ -22,6 +22,7 @@ coverage/
 # Uploads and local data
 uploads/
 tmp/
+scratch/
 *.dump
 
 # Editor and OS
