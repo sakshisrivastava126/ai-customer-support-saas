@@ -1,8 +1,10 @@
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { AppError } from '../utils/AppError.js';
 
 const AUTH_WINDOW_MS = 15 * 60 * 1000;
 const AUTH_MAX_REQUESTS = 10;
+const CHAT_WINDOW_MS = 60 * 1000;
+const CHAT_MAX_REQUESTS = 20;
 const UPLOAD_WINDOW_MS = 60 * 60 * 1000;
 const UPLOAD_MAX_REQUESTS = 20;
 
@@ -24,5 +26,14 @@ export const uploadLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   keyGenerator: (req) => `tenant:${req.user.tenantId}`,
+  handler: rejectAsRateLimited,
+});
+
+export const chatLimiter = rateLimit({
+  windowMs: CHAT_WINDOW_MS,
+  limit: CHAT_MAX_REQUESTS,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => `chat:${ipKeyGenerator(req.ip)}:${String(req.params.slug).toLowerCase()}`,
   handler: rejectAsRateLimited,
 });
