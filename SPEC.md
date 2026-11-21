@@ -298,7 +298,7 @@ Client uses `fetch` + `ReadableStream` (not `EventSource`, which can't POST). Se
 - `$vectorSearch` aggregation in `vectorStore.service.js` (raw aggregation, not LangChain's vector store class, so the tenant filter is a required argument) (assumed).
 - `index: "chunk_vector_index"`, `limit: RAG_TOP_K = 5`, `numCandidates: RAG_NUM_CANDIDATES = 100`, `filter: { tenantId: <ObjectId> }`.
 - Project `score: { $meta: "vectorSearchScore" }`. Keep chunks with `score >= RAG_SIMILARITY_THRESHOLD`.
-- **Threshold:** 0.85 is only a starting point. For cosine similarity, Atlas normalizes scores to 0–1 as `(1 + cosine) / 2`, so 0.85 corresponds to a raw cosine of 0.7. Tune it on about 20 real questions per test tenant, using query-to-document scores (a `RETRIEVAL_QUERY` embedding against stored chunks). Never tune it on document-to-document scores: Gemini scores even unrelated documents around 0.90 on Atlas's scale.
+- **Threshold:** calibrated to 0.81 on 15 real questions (see DECISIONS.md). It filters out clearly off-topic questions; borderline ones reach the answer model, and the prompt's "I don't know" rule handles them. Re-check it when documents change, using query-to-document scores (a `RETRIEVAL_QUERY` embedding against stored chunks), never document-to-document scores: Gemini scores even unrelated documents around 0.90 on Atlas's scale. Atlas normalizes cosine to 0–1 as `(1 + cosine) / 2`, so 0.81 is a raw cosine of 0.62.
 - If 0 chunks pass: skip the answer LLM call, stream `FALLBACK_TEXT`, set `answered=false`.
 - If the model's answer starts with "I don't know", also set `answered=false`.
 - If the answer model returns empty or whitespace-only text, save and stream `FALLBACK_TEXT` instead and set `answered=false`.
@@ -375,13 +375,13 @@ Human message template:
 | JWT_EXPIRES_IN | Token lifetime | `1d` |
 | CLIENT_ORIGIN | Comma-separated CORS allowlist | `http://localhost:5173,https://supportbot.vercel.app` |
 | GOOGLE_API_KEY | Gemini API key | `AIza...` |
-| LLM_MODEL | Chat model name | `gemini-2.5-flash` (assumed) |
+| LLM_MODEL | Chat model name | `gemini-3.5-flash-lite` (assumed) |
 | EMBEDDING_MODEL | Embedding model name | `gemini-embedding-001` (assumed) |
 | EMBEDDING_DIMENSIONS | Must equal vector index `numDimensions` | `768` |
 | VECTOR_INDEX_NAME | Atlas vector index name | `chunk_vector_index` |
 | RAG_TOP_K | Chunks retrieved | `5` |
 | RAG_NUM_CANDIDATES | ANN candidates | `100` |
-| RAG_SIMILARITY_THRESHOLD | Minimum score kept | `0.85` |
+| RAG_SIMILARITY_THRESHOLD | Minimum score kept | `0.81` |
 | RAG_HISTORY_MESSAGES | Memory window (6–10) | `8` |
 | MAX_MESSAGE_CHARS | Chat input limit | `1000` |
 | MAX_UPLOAD_MB | Upload size limit | `10` |
